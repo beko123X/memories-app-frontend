@@ -1,17 +1,31 @@
+// src/index.js
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
+import { Provider } from 'react-redux';
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline'; // Optional: normalizes CSS
 import App from './App';
-import reportWebVitals from './reportWebVitals';
+import { myStore } from './Redux/ReduxStore';
+import { theme } from './styles';
+
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
+
+// 2️⃣ PROVIDE the theme (pass the object)
 root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+    <Provider store={myStore}>
+        <ThemeProvider theme={theme}>
+            <CssBaseline> {/* Optional: normalizes CSS */}
+                <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
+                    <App />
+                </GoogleOAuthProvider>
+            </CssBaseline>
+        </ThemeProvider>
+    </Provider>
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
+
+
+// client id : 748340975971-3aa9rrt96vanvh589tedq88ecmsqo2fn.apps.googleusercontent.com
+// client secret : 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
