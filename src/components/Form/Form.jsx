@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import * as Yup from 'yup';
 import makeStyles from "./styles";
 
+// تعريف شروط التحقق من البيانات
 const postSchema = Yup.object().shape({
   title: Yup.string().required('Title is required'),
   message: Yup.string().min(10, 'Message must be at least 10 characters').required('Message is required'),
@@ -32,6 +33,7 @@ const Form = ({ currentId, setCurrentId }) => {
     if (postToEdit) setPostData({ ...postToEdit, tags: postToEdit.tags.join(',') });
   }, [postToEdit]);
 
+  // دالة التحقق من الحقول الفردية أثناء الكتابة
   const validateField = async (name, value) => {
     try {
       await Yup.reach(postSchema, name).validate(value);
@@ -50,37 +52,42 @@ const Form = ({ currentId, setCurrentId }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // 1. التحقق من صحة جميع البيانات قبل البدء
       await postSchema.validate(postData, { abortEarly: false });
       setLoading(true);
 
       let finalImageUrl = postData.selectedFile;
 
-      // Check if selectedFile is a new Base64 string (starts with data:image)
+      // 2. إذا كانت الصورة بصيغة Base64 (صورة جديدة تم اختيارها)
       if (postData.selectedFile.startsWith('data:image')) {
         const formData = new FormData();
         formData.append('file', postData.selectedFile);
-        formData.append('upload_preset', 'memories_preset'); // <--- CHANGE THIS to your Unsigned Preset Name
+        // تأكد من استخدام اسم الـ Preset الخاص بك هنا
+        formData.append('upload_preset', process.env.REACT_APP_CLOUDINARY_PRESET || 'memories_preset');
 
         const cloudinaryRes = await fetch(
-          `https://api.cloudinary.com/v1_1/your_cloud_name/image/upload`, // <--- CHANGE your_cloud_name
+          `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`,
           { method: 'POST', body: formData }
         );
 
         const cloudinaryData = await cloudinaryRes.json();
+        
         if (cloudinaryData.secure_url) {
           finalImageUrl = cloudinaryData.secure_url;
         } else {
-          throw new Error('Cloudinary upload failed');
+          throw new Error('Cloudinary upload failed. Check your Cloud Name and Preset.');
         }
       }
 
+      // 3. تجهيز البيانات للإرسال إلى الباك إند الخاص بك
       const dataToSend = { 
         ...postData, 
-        selectedFile: finalImageUrl, // Sending only the URL to your backend
+        selectedFile: finalImageUrl, // نرسل الرابط الصغير فقط
         name: user?.result?.name, 
         tags: postData.tags.split(',').map(t => t.trim()) 
       };
 
+      // 4. إرسال الطلب (Update أو Create)
       if (currentId) {
         await dispatch(updatePost({ id: currentId, updatedPost: dataToSend }));
       } else {
@@ -91,13 +98,14 @@ const Form = ({ currentId, setCurrentId }) => {
       clearInput();
     } catch (yupError) {
       setLoading(false);
-      console.error(yupError);
       if (yupError.inner) {
         const validationErrors = {};
         yupError.inner.forEach((error) => {
           validationErrors[error.path] = error.message;
         });
         setErrors(validationErrors);
+      } else {
+        console.error("Submission Error:", yupError.message);
       }
     }
   };
@@ -108,26 +116,64 @@ const Form = ({ currentId, setCurrentId }) => {
     if (setCurrentId) setCurrentId(null);
   };
 
-  if (!user?.result?.name) return <Paper className={classes.paper}><Typography variant='h6' align='center'>Please Sign In.</Typography></Paper>;
+  if (!user?.result?.name) {
+    return (
+      <Paper className={classes.paper} elevation={2}>
+        <Typography variant='h6' align='center'>
+          Please Sign In to create and like memories.
+        </Typography>
+      </Paper>
+    );
+  }
 
   return (
     <Paper className={classes.paper} elevation={4} sx={{ p: 2 }}>
       <form autoComplete="off" noValidate className={classes.form} onSubmit={handleSubmit}>
-        <Typography variant="h6" align="center" gutterBottom>{currentId ? 'Editing' : 'Creating'} a Memory</Typography>
+        <Typography variant="h6" align="center" gutterBottom>
+          {currentId ? 'Editing' : 'Creating'} a Memory
+        </Typography>
+
         <TextField name="title" variant="outlined" label="Title" fullWidth value={postData.title} onChange={handleInputChange} error={!!errors.title} helperText={errors.title} sx={{ mb: 2 }} />
         <TextField name="message" variant="outlined" label="Message" fullWidth multiline rows={4} value={postData.message} onChange={handleInputChange} error={!!errors.message} helperText={errors.message} sx={{ mb: 2 }} />
-        <TextField name="tags" variant="outlined" label="Tags" fullWidth value={postData.tags} onChange={handleInputChange} error={!!errors.tags} helperText={errors.tags} sx={{ mb: 2 }} />
-        <div style={{ marginBottom: '15px' }}>
-          <FileBase64 type="file" multiple={false} onDone={({ base64 }) => {
+        <TextField name="tags" variant="outlined" label="Tags (comma separated)" fullWidth value={postData.tags} onChange={handleInputChange} error={!!errors.tags} helperText={errors.tags} sx={{ mb: 2 }} />
+
+        <div className={classes.fileInput} style={{ marginBottom: '15px' }}>
+          <FileBase64 
+            type="file" 
+            multiple={false} 
+            onDone={({ base64 }) => {
                 setPostData({ ...postData, selectedFile: base64 });
                 validateField('selectedFile', base64);
-            }} />
-          {errors.selectedFile && <Typography color="error" variant="caption" sx={{ display: 'block', mt: 0.5 }}>{errors.selectedFile}</Typography>}
+            }} 
+          />
+          {errors.selectedFile && (
+            <Typography color="error" variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+              {errors.selectedFile}
+            </Typography>
+          )}
         </div>
-        <Button variant="contained" color="primary" size="large" type="submit" fullWidth sx={{ mb: 1 }} disabled={loading}>
+
+        <Button 
+          variant="contained" 
+          color="primary" 
+          size="large" 
+          type="submit" 
+          fullWidth 
+          sx={{ mb: 1 }} 
+          disabled={loading}
+        >
           {loading ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
         </Button>
-        <Button variant="outlined" color="secondary" size="small" onClick={clearInput} fullWidth disabled={loading}>Clear</Button>
+        <Button 
+          variant="outlined" 
+          color="secondary" 
+          size="small" 
+          onClick={clearInput} 
+          fullWidth 
+          disabled={loading}
+        >
+          Clear
+        </Button>
       </form>
     </Paper>
   );
